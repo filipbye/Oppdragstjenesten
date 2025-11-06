@@ -1,0 +1,2 @@
+# Oppdragstjenesten
+Hva er Oppdragstjenesten?  Oppdragstjenesten er en digital plattform laget for å hjelpe mennesker som trenger assistanse med små oppgaver i hverdagen, og samtidig gi andre muligheten til å tjene penger på å utføre disse oppdragene. 
