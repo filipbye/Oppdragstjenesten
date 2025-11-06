@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Oppdragstjenesten Fullversjon</title>
+<style>
+body { margin: 0; font-family: Arial, sans-serif; background: #f4f4f4; }
+header { display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #1f7a70; color: white; }
+.header-right { display: flex; align-items: center; gap: 8px; }
+.sidebar { position: fixed; left: -250px; top: 0; width: 250px; height: 100%; background: #0f4c4b; color: white; padding-top: 20px; display: flex; flex-direction: column; gap: 8px; transition: left 0.3s; z-index: 1000; }
+.sidebar.show { left: 0; }
+.sidebar button { background: none; border: none; color: white; padding: 12px; text-align: left; cursor: pointer; font-size: 16px; }
+.sidebar button:hover { background: #144e4b; }
+.main { margin-left: 0; padding: 20px; transition: margin-left 0.3s; }
+.main.shift { margin-left: 250px; }
+.page { display: none; }
+.active { display: block; }
+.input, textarea { width: 100%; padding: 8px; margin: 4px 0; border-radius: 5px; border: 1px solid #ccc; }
+.btn { padding: 8px 12px; background: #1f7a70; color: white; border: none; border-radius: 6px; cursor: pointer; margin: 4px 0; }
+.task, .message, .profile-card { background: white; padding: 10px; margin-bottom: 10px; border-radius: 6px; }
+.message.me { background: #dcfce7; align-self: flex-end; }
+.message.them { background: #fff; align-self: flex-start; }
+.flex { display: flex; gap: 8px; align-items: center; }
+.avatar { width: 50px; height: 50px; border-radius: 6px; object-fit: cover; cursor: pointer; }
+#map { height: 250px; width: 100%; border-radius: 6px; margin-top: 10px; }
+@media(max-width:900px){.main.shift{margin-left:0}.sidebar{position:relative;width:100%;height:auto;left:0;}}
+.menu-btn{font-size:24px;cursor:pointer}
+</style>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+
+<!-- Leaflet -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body>
+<header>
+<div class="menu-btn" onclick="toggleMenu()">☰</div>
+<div class="brand">Oppdragstjenesten</div>
+<div class="header-right" id="authArea"></div>
+</header>
+
+<div class="sidebar" id="sidebar">
+<button onclick="show('home')">Hovedside</button>
+<button onclick="show('create')">Legg ut oppdrag</button>
+<button onclick="show('about')">Informasjon om Oppdragstjenesten</button>
+<button onclick="show('profile')">Profil</button>
+<button onclick="show('feed')">Utforsk/Finn oppdrag</button>
+<button onclick="show('messages')">Meldinger</button>
+</div>
+
+<div class="main" id="mainContent">
+<section id="home" class="page active">
+<h2>Velkommen til Oppdragstjenesten</h2>
+<p id="homeText">Dette er hovedsiden. Sjef kan endre innholdet og bakgrunnen her.</p>
+</section>
+
+<section id="create" class="page">
+<h3>Legg ut oppdrag</h3>
+<input id="taskTitle" class="input" placeholder="Tittel" />
+<textarea id="taskDesc" class="input" placeholder="Beskrivelse"></textarea>
+<input id="taskPrice" class="input" placeholder="Pris" type="number" />
+<input id="taskLocation" class="input" placeholder="Sted (valgfritt)" />
+<button class="btn" onclick="publishTask()">Publiser</button>
+</section>
+
+<section id="about" class="page">
+<h3>Informasjon om Oppdragstjenesten</h3>
+<textarea id="aboutContent" class="input" rows="5" readonly></textarea>
+<button class="btn" id="saveAboutBtn" style="display:none" onclick="saveAbout()">Lagre endringer</button>
+</section>
+
+<section id="profile" class="page">
+<h3>Min profil</h3>
+<img id="profileAvatar" class="avatar" src="" />
+<div id="profileInfo"></div>
+<div id="userTasks"></div>
+</section>
+
+<section id="feed" class="page">
+<h3>Utforsk oppdrag</h3>
+<div id="taskList"></div>
+<div id="map"></div>
+</section>
+
+<section id="messages" class="page">
+<h3>Meldinger</h3>
+<div id="conversations"></div>
+<div id="chatWindow" style="display:none">
+<div id="chatHeader"></div>
+<div id="chatMessages" style="height:300px;overflow:auto;border:1px solid #ccc;padding:6px;margin-bottom:6px;border-radius:6px;"></div>
+<div class="flex"><input id="chatInput" class="input" placeholder="Skriv melding..." /><button class="btn" onclick="sendMessage()">Send</button></div>
+</div>
+</section>
+</div>
+
+<script>
+const firebaseConfig = { apiKey: "AIzaSyDetAoUeCO8DfraAHMihUJlGJupTvUwu68", authDomain: "oppdragstjenesten-54329.firebaseapp.com", projectId: "oppdragstjenesten-54329", storageBucket: "oppdragstjenesten-54329.appspot.com", messagingSenderId: "1026577707287", appId: "1:1026577707287:web:d868ab7265100682840752", measurementId: "G-3XNQL7S9GR" };
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+const storage = firebase.storage();
+let currentUser = null;
+let isAdmin=false;
+const adminCode='Fotball123';
+
+function toggleMenu(){document.getElementById('sidebar').classList.toggle('show');document.getElementById('mainContent').classList.toggle('shift');}
+function show(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById(id).classList.add('active');}
+
+function setAuthArea(){const authArea=document.getElementById('authArea');authArea.innerHTML='';if(currentUser){const img=document.createElement('img');img.className='avatar';img.src=currentUser.avatar||'';img.onclick=()=>show('profile');authArea.appendChild(img);const btn=document.createElement('button');btn.className='btn';btn.textContent='Logg ut';btn.onclick=logout;authArea.appendChild(btn);}else{['Registrer','Login','Har du en kode?'].forEach(text=>{const b=document.createElement('button');b.className='btn';b.textContent=text;b.onclick=()=>{if(text==='Registrer') register(); else if(text==='Login') login(); else adminLogin();};authArea.appendChild(b);});}}
+
+function login(){const email=prompt('Epost');if(!email) return;const pass=prompt('Passord');if(!pass) return;auth.signInWithEmailAndPassword(email,pass).catch(e=>alert(e.message));}
+function register(){const email=prompt('Epost');if(!email) return;const pass=prompt('Passord');if(!pass) return;auth.createUserWithEmailAndPassword(email,pass).catch(e=>alert(e.message));}
+function adminLogin(){const code=prompt('Skriv admin-kode');if(code===adminCode){isAdmin=true;currentUser={uid:'admin',email:'Sjef',admin:true}; alert('Admin logget inn'); setAuthArea(); show('home');} else{alert('Feil kode');}}
+function logout(){auth.signOut();isAdmin=false;currentUser=null;setAuthArea();show('home');}
+
+auth.onAuthStateChanged(user=>{if(user){currentUser={uid:user.uid,email:user.email,avatar:''}; setAuthArea(); show('home');} else{setAuthArea();}});
+</script>
+</body>
+</html>
